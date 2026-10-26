@@ -48,7 +48,23 @@
   var LOOK_VALUES = { bg: ['dark', 'light', 'photo'], layout: ['list', 'dock'], apps: ['icons', 'both', 'text'], font: Object.keys(FONTS).filter(function (id) { return id === 'manrope' || PRIVATE_FONTS.indexOf(id) >= 0; }), controls: ['icons', 'both', 'text'], focus: ['type', 'glass'], material: ['soft', 'frost', 'tint'] };
   var LOOK_NAMES = { bg: 'Background', layout: 'Layout', apps: 'Apps', font: 'Font', controls: 'Home controls', focus: 'Focus', material: 'Material' };
   var VALUE_NAMES = { dark: 'Dark', light: 'Light', photo: 'Photo', list: 'List', dock: 'Dock', type: 'Type', glass: 'Glass', soft: 'Soft', frost: 'Frost', tint: 'Clear tint', icons: 'Icons', both: 'Icons and text', text: 'Text' };
-  var UTIL = { art: ['Art Mode', 'art'], apps: ['All apps', 'apps'], arrange: ['Arrange', 'arrange'], settings: ['Settings', 'settings'] };
+  /* No 'art' entry: this TV is not a Frame (FrameTVSupport=false). */
+  var UTIL = { apps: ['All apps', 'apps'], arrange: ['Arrange', 'arrange'], settings: ['Settings', 'settings'] };
+  /* Brand plates: each tile carries its app's own colour instead of reading as
+     clear glass. 'bg' fills the tile, 'ink' colours the masked glyph through
+     currentColor. These are approximations of each brand's palette - edit freely.
+     Any brand absent here keeps the original glass treatment. */
+  var BRAND_TINT = {
+    netflix: { bg: '#141414', ink: '#e50914' },
+    youtube: { bg: '#ff0000', ink: '#ffffff' },
+    primevideo: { bg: '#00a8e1', ink: '#ffffff' },
+    disneyplus: { bg: '#0c204a', ink: '#ffffff' },
+    appletv: { bg: '#000000', ink: '#ffffff' },
+    hulu: { bg: '#1ce783', ink: '#0b0b0b' },
+    spotify: { bg: '#1db954', ink: '#ffffff' },
+    tubi: { bg: '#7408ff', ink: '#ffffff' }
+  };
+  function brandTint(a) { return a && BRAND_TINT[a.brand || a.id] || null; }
   var MSG = {
     leave: { title: 'Leave Home?', line: 'Open Samsung Home?', note: '', actions: [['stay', 'Stay'], ['samsung', 'Samsung Home']] }
   };
@@ -491,15 +507,14 @@
   }
 
   /* ---------- Navigation targets ---------- */
-  function utils() { return ['art', 'apps', 'settings']; }
+  function utils() { return ['apps', 'settings']; }
   /* prev/next run along the apps; out goes to the controls, inn comes back (or to a per-app action). */
   function axes() {
     var v = S.c.layout === 'list';
     return { prev: v ? 'up' : 'left', next: v ? 'down' : 'right', out: v ? 'right' : 'up', inn: v ? 'left' : 'down' };
   }
   function utilAction(u) {
-    if (u === 'art') perform('Art Mode', FrameDevice.art);
-    else if (u === 'apps') openApps();
+    if (u === 'apps') openApps();
     else openSettings();
   }
   function addAppsRoute() { openEditor('home'); }
@@ -1176,10 +1191,17 @@
     return first * g.pitch;
   }
   function dockTileHtml(it, full) {
-    var a, body;
+    var a, body, tint;
     if (it.kind === 'add') return '<span class="add">' + icon('plus') + '</span><span class="label">' + (full ? 'Home is full' : 'Add app') + '</span>';
     a = app(it.id);
     body = S.c.apps === 'text' ? '' : appMark(a, S.c.apps === 'icons' ? 136 : 120, S.c.apps === 'icons' ? 88 : 72, S.c.apps === 'icons' ? 72 : 58);
+    /* Fallback only: used when the app has no original icon of its own. The ink
+       wrapper must enclose the mark, because .mk paints from currentColor. */
+    tint = brandTint(a);
+    if (tint && !a.icon) {
+      body = '<span class="brand-plate" style="background:' + tint.bg + '"></span>'
+        + '<span class="brand-ink" style="color:' + tint.ink + '">' + body + '</span>';
+    }
     return body + (S.c.apps === 'icons' ? '' : '<span class="label" style="font-size:' + dockLabelSize(a.id) + 'px;top:' + ((S.c.apps === 'text' ? 28 : 128) + fontShift('primary', dockLabelSize(a.id))) + 'px"><span class="label-ink">' + esc(a.name) + '</span></span>') + '<span class="nudge nudge-l">' + icon('left') + '</span><span class="nudge nudge-r">' + icon('right') + '</span>';
   }
   /* A wide label can reach the shelf before its icon. Check the rendered icon box,

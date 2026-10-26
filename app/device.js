@@ -1,21 +1,23 @@
 /* Public Tizen application APIs. No Mac server, network address or credentials. */
 (function () {
   'use strict';
+  /* Launch targets for UN65TU690TFXZA (US, Tizen 5.5).
+     UNVERIFIED: these are Tizen application IDs, a different namespace from the
+     numeric Samsung store IDs. Confirm every one against getAppsInfo() on the TV
+     (npm run tv:apps) and correct it here before trusting the dock. An ID that is
+     wrong fails safely - launch() reports "no launch target" rather than hanging. */
   var IDS = {
-    stremio: 'IkWsFHtOY9.Stremio', netflix: 'org.tizen.netflix-app',
-    disneyplus: 'MCmYXNxgcu.DisneyPlus', youtube: '9Ur5IzDKqV.TizenYouTube',
-    appletv: 'com.samsung.tv.aria-video', primevideo: 'org.tizen.primevideo',
-    abciview: 'mWK87Xghap.ABCiview', sbs: 'OyE7OuxlUi.SBSOnDemand',
-    applemusic: 'org.tizen.apple.apple-music'
+    netflix: 'org.tizen.netflix-app', youtube: '9Ur5IzDKqV.TizenYouTube',
+    primevideo: 'org.tizen.primevideo', disneyplus: 'MCmYXNxgcu.DisneyPlus',
+    appletv: 'com.samsung.tv.aria-video', hulu: '', tubi: '3KA0pm7a7V.TubiTV',
+    spotify: 'rJeHak5zRg.Spotify'
   };
-  var STREAMING = ['as6cYRgkPy.Binge', '73iTZRTc34.Stan', '5b8c3eb16b.BeamCTVDev',
-    'KaLitts8bq.tenplaySamsungTizen', 'eYuOiOLYQX.KayoSports', 'Ne2ZsPWdKl.9NOW',
-    '3KA0pm7a7V.TubiTV', 'rJeHak5zRg.Spotify', 'icp4AvUPiA.7plus'];
-  var CONSUMER_SYSTEM = ['org.tizen.browser', 'com.microsoft.copilot'];
-  var EXTRA_BRANDS = {'rJeHak5zRg.Spotify': 'spotify', '5b8c3eb16b.BeamCTVDev': 'hbomax', '3KA0pm7a7V.TubiTV': 'tubi'};
+  var STREAMING = [];
+  var CONSUMER_SYSTEM = ['org.tizen.browser'];
+  var EXTRA_BRANDS = {'rJeHak5zRg.Spotify': 'spotify', '3KA0pm7a7V.TubiTV': 'tubi'};
   var INTERNAL = ['adplatform.ADPlayer', 'WykOS4t4F0.cmsWebApp', '25emanual3.emanual',
     'ZODRT12q2l.WebAccountExtension', 'ByJlgt0XeD.CastSettingsApp', 'tv6pbVMQFF.PrivacyChoices'];
-  var SELF = 'nClrkHome1.FrameHome';
+  var SELF = 'CleanTU690.Home';
   function api() { return window.tizen && window.tizen.application; }
   function unavailable(done) {
     done({ message: 'Open CleanFrame on the TV to use this control.', detail: 'The web preview cannot control the TV.' });
@@ -38,15 +40,11 @@
     if (!IDS[brand]) { done({message: 'This app has no launch target.'}); return; }
     launchApp(IDS[brand], done);
   }
-  function art(done) {
-    if (!api()) { unavailable(done); return; }
-    var finish = bounded(done);
-    try {
-      var data = [new tizen.ApplicationControlData('mode', ['fullscreen']), new tizen.ApplicationControlData('requester', ['mobile'])];
-      var control = new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/default', null, null, null, data);
-      api().launchAppControl(control, 'org.tizen.art-app', function () { finish(null); }, function (err) { finish(failure(err)); });
-    } catch (err) { finish(failure(err)); }
-  }
+  /* No art(): this TV reports FrameTVSupport=false and has no org.tizen.art-app. */
+
+  /* UNVERIFIED on Tizen 5.5. These IDs come from the Tizen 9 reference TV; the
+     2020 platform may name its Smart Hub and Settings apps differently. Confirm
+     both against getAppsInfo() before relying on them. */
   function home(done) { launchApp('com.samsung.tv.csfs', done); }
   function settings(done) { launchApp('com.samsung.tv.coba.setting', done); }
   function apps(done) {
@@ -70,5 +68,5 @@
       }, function (err) { finish(failure(err)); });
     } catch (err) { finish(failure(err)); }
   }
-  window.FrameDevice = { launch: launch, launchApp: launchApp, art: art, home: home, settings: settings, apps: apps };
+  window.FrameDevice = { launch: launch, launchApp: launchApp, home: home, settings: settings, apps: apps };
 }());

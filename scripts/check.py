@@ -10,8 +10,11 @@ manifest = XML.parse(app / 'config.xml').getroot()
 ns = {'w': 'http://www.w3.org/ns/widgets', 't': 'http://tizen.org/ns/widgets'}
 identity = manifest.find('t:application', ns)
 assert identity is not None, 'Missing application identity'
-assert identity.get('package') == 'nClrkHome1', 'Keep the installed package identity stable'
-assert identity.get('id') == 'nClrkHome1.FrameHome', 'Keep the installed application ID stable'
+# This fork has its own identity, as the upstream setup guide requires. Keeping
+# these stable matters for TV updates: a changed ID installs a second app.
+assert identity.get('package') == 'CleanTU690', 'Keep the installed package identity stable'
+assert identity.get('id') == 'CleanTU690.Home', 'Keep the installed application ID stable'
+assert identity.get('required_version') == '5.5', 'Target Tizen 5.5 for the UN65TU690T (2020 platform)'
 assert manifest.get('version') == json.loads((root / 'package.json').read_text())['version'], 'Manifest/package versions differ'
 for tag in ['content', 'icon']:
     node = manifest.find('w:' + tag, ns)
