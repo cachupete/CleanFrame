@@ -1952,13 +1952,19 @@
      Polling is confined to a launch we made and stops the moment the target is
      adopted or the window passes, so it cannot wander into unrelated apps the
      way the earlier always-on polling did. */
-  var ADOPT_WINDOW_MS = 9000, EXIT_POLL_MS = 2000;
-  var targetApp = null, adoptUntil = 0, exitTimer = 0, launchBaseline = null;
+  /* 9s was too short. YouTube and Disney+ appear around t+3s and work, but
+     HBO Max, Peacock and Prime Video did not - heavy apps can take far longer
+     to register, and anything that misses the window is never adopted. Widened
+     to 20s. Adoption still takes the FIRST non-service newcomer, so the churn
+     seen during playback (DisneyPlusService at t+13s, tilesservice at t+33s)
+     is still filtered out rather than mistaken for the app. */
+  var ADOPT_WINDOW_MS = 20000, EXIT_POLL_MS = 2000;
+  var targetApp = null, adoptUntil = 0, exitTimer = 0, launchBaseline = null, launchedId = null;
   function looksLikeService(id) {
     return /service|worker|daemon|bgservice|preview|updater|agent/i.test(id);
   }
   function startExitWatch(appId) {
-    targetApp = null; launchBaseline = null;
+    targetApp = null; launchBaseline = null; launchedId = appId;
     adoptUntil = Date.now() + ADOPT_WINDOW_MS;
     if (!window.FrameDevice || !FrameDevice.runningIds) return;
     FrameDevice.runningIds(function (ids) {
@@ -1967,7 +1973,7 @@
       exitTimer = setTimeout(exitWatchTick, 1200);
     });
   }
-  function stopExitWatch() { clearTimeout(exitTimer); exitTimer = 0; targetApp = null; launchBaseline = null; }
+  function stopExitWatch() { clearTimeout(exitTimer); exitTimer = 0; targetApp = null; launchBaseline = null; launchedId = null; }
   function exitWatchTick() {
     exitTimer = 0;
     if (!document.hidden || !window.FrameDevice || !FrameDevice.runningIds) return;
@@ -1978,7 +1984,17 @@
            the thing the viewer actually opened. Outside the window, give up -
            a resident app like Netflix never appears, and guessing past this
            point is what produced the builds that interrupted playback. */
-        if (Date.now() > adoptUntil) { stopExitWatch(); return; }
+        if (Date.now() > adoptUntil) {
+          /* Nothing new appeared, so the app was already resident. Fall back to
+             watching the id we launched: if it exits on backing out this still
+             works, and if it never exits - Netflix - nothing happens, which is
+             the same as before. Costs nothing to try. */
+          if (launchedId && ids.indexOf(launchedId) >= 0) {
+            targetApp = launchedId;
+            exitTimer = setTimeout(exitWatchTick, EXIT_POLL_MS);
+          } else { stopExitWatch(); }
+          return;
+        }
         var i;
         for (i = 0; i < ids.length; i++) {
           if (launchBaseline.indexOf(ids[i]) < 0 && !looksLikeService(ids[i])) { targetApp = ids[i]; break; }
