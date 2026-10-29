@@ -484,12 +484,10 @@
     if (!a || busy) return;
     if (S.c.home.indexOf(id) >= 0) { c = next(S.c.home.slice(), S.c.recent.slice()); c.lastApp = id; write(c, 'Last app'); }
     S.press = id; S.lastLaunch = a.name;
-    /* Remember what was started: being hidden is then expected, and the
-       watchdog waits for this app to exit rather than treating the hide as the
-       viewer being taken away. The short stand-down covers the gap before it
-       registers as running, when it would otherwise look already-exited. */
-    pendingApp = a.appId;
-    standDown(4000);
+    /* Short stand-down over the launch itself: the platform can show its own
+       home for a moment between this press and the app appearing, and that
+       instant must not read as the viewer being dumped on Smart Hub. */
+    standDown(5000);
     perform(a.name, function (done) { FrameDevice.launchApp(a.appId, done); });
   }
   function refreshCatalog() {
@@ -1950,22 +1948,30 @@
      viewer out of whatever they were watching. */
   var WATCH_STEPS = [0, 120, 150, 220, 320, 450, 700, 1100, 1800, 3000];
   var RAISE_GAP_MS = 2500;
-  var watchTimer = 0, watchStep = 0, lastRaise = 0, suppressUntil = 0, pendingApp = null;
+  var watchTimer = 0, watchStep = 0, lastRaise = 0, suppressUntil = 0;
 
   function raiseBack() {
     if (!document.hidden || Date.now() - lastRaise < RAISE_GAP_MS) return;
     lastRaise = Date.now();
-    pendingApp = null;
     FrameDevice.raiseSelf();
     watchStep = 0;
   }
+  /* Ask whether Smart Hub is up, rather than whether the launched app is still
+     alive. "Still alive" failed both ways on this TV: YouTube runs through
+     Cobalt, so 9Ur5IzDKqV.TizenYouTube hands off to com.samsung.tv.cobalt-yt
+     and exits after a few seconds, which read as "the viewer left"; and Netflix
+     keeps running in the background after Home is pressed, which read as "the
+     viewer is still watching" and refused to come back.
+
+     Smart Hub being up is the signal that actually matches the thing we care
+     about - the viewer is looking at Samsung's home screen - in every case:
+     Home from the launcher, Home from inside an app, and an app exiting. */
   function watchdogTick() {
     watchTimer = 0;
-    if (!document.hidden || !window.FrameDevice || !FrameDevice.raiseSelf) return;
+    if (!document.hidden || !window.FrameDevice || !FrameDevice.smartHubRunning) return;
     if (Date.now() < suppressUntil) { scheduleWatchdog(); return; }
-    if (!pendingApp) { raiseBack(); scheduleWatchdog(); return; }
-    FrameDevice.isRunning(pendingApp, function (running) {
-      if (!running) raiseBack();
+    FrameDevice.smartHubRunning(function (up) {
+      if (up) raiseBack();
       scheduleWatchdog();
     });
   }
@@ -1986,7 +1992,7 @@
     if (document.hidden) restartWatchdog();
     else {
       clearTimeout(watchTimer); watchTimer = 0; watchStep = 0;
-      lastRaise = 0; pendingApp = null;
+      lastRaise = 0;
     }
   });
 

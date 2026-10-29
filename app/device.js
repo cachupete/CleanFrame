@@ -68,6 +68,29 @@
      Used for what it actually reports instead - whether a given app is still
      alive. When the app the launcher started disappears from this list, that
      app has exited, which is the moment to come back. */
+  /* Smart Hub itself. Deliberately this one id and nothing else: an earlier
+     version also listed coba.apps, tv.store and volt.apps, which are resident
+     services rather than the screen the viewer sees, so the check answered yes
+     permanently. Whether csfs is resident too is the open question this is
+     written to answer on the device. */
+  var SMART_HUB = 'com.samsung.tv.csfs';
+  function smartHubRunning(done) {
+    /* isRunning defaults to true when it cannot tell, which is right for
+       "is my app still alive" but wrong here: an unknown answer must not
+       cause a raise. Ask directly so a failure reads as 'not up'. */
+    if (!api() || !api().getAppsContext) { done(false); return; }
+    var finished = false;
+    var timer = setTimeout(function () { if (!finished) { finished = true; done(false); } }, 1000);
+    try {
+      api().getAppsContext(function (contexts) {
+        if (finished) return;
+        finished = true; clearTimeout(timer);
+        var i;
+        for (i = 0; i < contexts.length; i++) if (contexts[i].appId === SMART_HUB) { done(true); return; }
+        done(false);
+      }, function () { if (!finished) { finished = true; clearTimeout(timer); done(false); } });
+    } catch (err) { if (!finished) { finished = true; clearTimeout(timer); done(false); } }
+  }
   function isRunning(appId, done) {
     if (!appId || !api() || !api().getAppsContext) { done(true); return; }
     var finished = false;
@@ -156,5 +179,5 @@
     } catch (err) { finish(failure(err)); }
   }
   window.FrameDevice = { launch: launch, launchApp: launchApp, home: home, settings: settings, apps: apps,
-    isRunning: isRunning, raiseSelf: raiseSelf };
+    isRunning: isRunning, smartHubRunning: smartHubRunning, raiseSelf: raiseSelf };
 }());
