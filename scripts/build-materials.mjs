@@ -9,7 +9,12 @@ const destination = root + '.local/materials/builder/';
 mkdirSync(destination, { recursive: true });
 // Preserve the reviewed density of the original nine Soft surfaces.
 const softTint = { misty: .43303399, cove: .389543, forest: .43034609, valley: .51301798,
-  night: .46650529, peaks: .36319971, bridge: .30784841, ridge: .6, golden: .32207446 };
+  night: .46650529, peaks: .36319971, bridge: .30784841, ridge: .6, golden: .32207446,
+  // The automatic tint clamps at .6, which is not enough for a pastel image far
+  // brighter than any of the original nine photos: it left curious-study-soft at
+  // mean luma 95.7 against misty's 60.4, so white icons and labels vanished into
+  // the All apps backdrop. Fixed values skip the clamp. .75 lands it near misty.
+  curious: .75 };
 const report = { recipe: 1, size: [1920, 1080], assets: [], errors: [] };
 const preview = await openPreview();
 try {

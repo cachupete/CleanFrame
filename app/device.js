@@ -47,21 +47,38 @@
      both against getAppsInfo() before relying on them. */
   function home(done) { launchApp('com.samsung.tv.csfs', done); }
   function settings(done) { launchApp('com.samsung.tv.coba.setting', done); }
+  /* Matching a brand by Tizen application ID alone is brittle: the IDs above are
+     unverified, and when one is wrong the app loses its bundled artwork and falls
+     back to the TV's own low-resolution icon. Name matching is the reliable
+     signal, because getAppsInfo reports the display name the TV shows. */
+  var BY_NAME = {
+    'netflix': 'netflix', 'youtube': 'youtube', 'prime video': 'primevideo',
+    'disney+': 'disneyplus', 'disney plus': 'disneyplus', 'apple tv': 'appletv',
+    'hulu': 'hulu', 'tubi': 'tubi', 'spotify': 'spotify'
+  };
+  function brandOf(known, a) {
+    if (known[a.id]) return known[a.id];
+    var n = String(a.name || '').toLowerCase().replace(/\s+/g, ' ').trim(), key;
+    if (BY_NAME[n]) return BY_NAME[n];
+    for (key in BY_NAME) if (BY_NAME.hasOwnProperty(key) && n.indexOf(key) === 0) return BY_NAME[key];
+    return '';
+  }
   function apps(done) {
     if (!api()) { unavailable(done); return; }
     var finish = bounded(done);
     try {
       api().getAppsInfo(function (list) {
         var known = {}, seen = {}, result = [];
-        Object.keys(IDS).forEach(function (brand) { known[IDS[brand]] = brand; });
+        Object.keys(IDS).forEach(function (brand) { if (IDS[brand]) known[IDS[brand]] = brand; });
         list.forEach(function (a) {
-          var primary = !!known[a.id], stream = STREAMING.indexOf(a.id) >= 0;
+          var brand = brandOf(known, a);
+          var primary = !!brand, stream = STREAMING.indexOf(a.id) >= 0;
           var consumer = /^[A-Za-z0-9]{10}\.[A-Za-z0-9_-]+$/.test(a.id) || CONSUMER_SYSTEM.indexOf(a.id) >= 0;
           if (a.id === SELF || INTERNAL.indexOf(a.id) >= 0 || seen[a.id] || !a.name || (!primary && !stream && (!a.show || !consumer))) return;
           if (!primary && /(?:service|worker|preview|promotion|plugin|launcher|test|sdk|^ep[ -]|factory|daemon)/i.test(a.name + ' ' + a.id)) return;
           if (/-dummy$/.test(a.id) || a.id === 'com.samsung.tv.cobalt-yt') return;
           seen[a.id] = true;
-          result.push({ appId: a.id, name: a.name, brand: known[a.id] || EXTRA_BRANDS[a.id] || '', icon: a.iconPath || '', rank: primary ? Object.keys(IDS).indexOf(known[a.id]) : (stream ? 20 : 30) });
+          result.push({ appId: a.id, name: a.name, brand: brand || EXTRA_BRANDS[a.id] || '', icon: a.iconPath || '', rank: primary ? Object.keys(IDS).indexOf(brand) : (stream ? 20 : 30) });
         });
         result.sort(function (a, b) { return a.rank - b.rank || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
         finish(null, result);
