@@ -1974,36 +1974,51 @@
     });
   }
   function stopExitWatch() { clearTimeout(exitTimer); exitTimer = 0; targetApp = null; launchBaseline = null; launchedId = null; }
+  function newcomerIn(ids) {
+    var i;
+    for (i = 0; i < ids.length; i++) {
+      if (launchBaseline.indexOf(ids[i]) < 0 && !looksLikeService(ids[i])) return ids[i];
+    }
+    return null;
+  }
+  /* Adopt the launched id straight away when it is already running, rather than
+     sitting out the adoption window first. That window was never detection lag -
+     a resident app like HBO Max never produces a newcomer, so the watch waited
+     the full 20s before falling back, and the return landed twenty seconds after
+     the viewer had already backed out.
+
+     A newcomer still wins if one turns up, because of the handoff case: YouTube's
+     stub exits a few seconds after starting Cobalt, and raising on that would
+     interrupt the video. So while the window is open a newcomer replaces the
+     provisional target, and a target that vanishes inside the window is treated
+     as a possible handoff - look for the replacement before concluding the
+     viewer left. */
   function exitWatchTick() {
     exitTimer = 0;
     if (!document.hidden || !window.FrameDevice || !FrameDevice.runningIds) return;
     FrameDevice.runningIds(function (ids) {
       if (!ids) { exitTimer = setTimeout(exitWatchTick, EXIT_POLL_MS); return; }
+      var open = Date.now() < adoptUntil, fresh;
+
       if (!targetApp) {
-        /* Adoption: the first non-service app to appear after our launch is
-           the thing the viewer actually opened. Outside the window, give up -
-           a resident app like Netflix never appears, and guessing past this
-           point is what produced the builds that interrupted playback. */
-        if (Date.now() > adoptUntil) {
-          /* Nothing new appeared, so the app was already resident. Fall back to
-             watching the id we launched: if it exits on backing out this still
-             works, and if it never exits - Netflix - nothing happens, which is
-             the same as before. Costs nothing to try. */
-          if (launchedId && ids.indexOf(launchedId) >= 0) {
-            targetApp = launchedId;
-            exitTimer = setTimeout(exitWatchTick, EXIT_POLL_MS);
-          } else { stopExitWatch(); }
-          return;
-        }
-        var i;
-        for (i = 0; i < ids.length; i++) {
-          if (launchBaseline.indexOf(ids[i]) < 0 && !looksLikeService(ids[i])) { targetApp = ids[i]; break; }
-        }
+        fresh = newcomerIn(ids);
+        if (fresh) { targetApp = fresh; adoptUntil = 0; }
+        else if (launchedId && ids.indexOf(launchedId) >= 0) { targetApp = launchedId; }
+        else if (!open) { stopExitWatch(); return; }
         exitTimer = setTimeout(exitWatchTick, EXIT_POLL_MS);
         return;
       }
+
+      if (open && targetApp === launchedId) {
+        fresh = newcomerIn(ids);
+        if (fresh && fresh !== targetApp) { targetApp = fresh; adoptUntil = 0; }
+      }
+
       if (ids.indexOf(targetApp) < 0) {
-        /* The app the viewer opened is gone: they backed out. */
+        if (open) {
+          fresh = newcomerIn(ids);
+          if (fresh) { targetApp = fresh; adoptUntil = 0; exitTimer = setTimeout(exitWatchTick, EXIT_POLL_MS); return; }
+        }
         stopExitWatch();
         if (document.hidden && window.FrameDevice && FrameDevice.raiseSelf) FrameDevice.raiseSelf();
         return;
