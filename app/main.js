@@ -1926,75 +1926,26 @@
   QA.activate = function (action) { return activate(action) ? QA.state() : null; };
   QA.actions = function () { var view = isSettingsDetail(top()) ? appearanceEl : sheetEl.hidden ? homeEl : sheetEl; return Array.prototype.filter.call(view.querySelectorAll('[data-action]'), renderedAction).map(function (el) { return el.getAttribute('data-action'); }); };
 
-  /* ---------- Return watchdog ----------
-     The Home button cannot be rebound on this firmware: db/appfw/home_appid is
-     the documented route, vconftool is not allowlisted here, and both that and
-     the application-control caller route were tested on the device. So rather
-     than change where the platform sends the viewer, notice having been sent
-     there and come back. background-support keeps this app resident.
+  /* ---------- Auto-return: REMOVED ----------
+     Bringing the launcher back by itself is off. Every way of detecting
+     "the viewer was taken away" rather than "the viewer is watching
+     something" failed on this TV, and each failure interrupted playback:
 
-     Two cases, told apart by whether this launcher started something:
+       launched app still running - YouTube hands off to Cobalt and exits
+         within seconds, reading as the viewer leaving, mid-video.
+       Smart Hub running - com.samsung.tv.csfs is resident at all times, so
+         it answered yes permanently.
+       raise on an uninitiated hide - no polling, but still loops: raising
+         makes this app visible, returning to the app hides it again, and
+         that hide was not a launch, so it raises once more.
 
-       nothing launched  -> being hidden means the viewer was taken away, by
-                            Home or Return. Come straight back, no API call,
-                            which is what makes that path fast.
-       app launched      -> being hidden is expected. Say nothing until that
-                            app exits, which is when it leaves the running
-                            list, and only then come back.
+     The platform offers no way to ask what is in the foreground, and without
+     that there is no sound signal. A TV that interrupts what you are watching
+     is worse than one that does not return to the launcher, so this stays off
+     until there is a signal worth trusting.
 
-     An earlier version asked whether Samsung's home was in getAppsContext.
-     That list is every running app, not the foreground one, and Samsung's home
-     is essentially always running - so it answered yes mid-film and hauled the
-     viewer out of whatever they were watching. */
-  var WATCH_STEPS = [0, 120, 150, 220, 320, 450, 700, 1100, 1800, 3000];
-  var RAISE_GAP_MS = 2500;
-  var watchTimer = 0, watchStep = 0, lastRaise = 0, suppressUntil = 0;
-
-  function raiseBack() {
-    if (!document.hidden || Date.now() - lastRaise < RAISE_GAP_MS) return;
-    lastRaise = Date.now();
-    FrameDevice.raiseSelf();
-    watchStep = 0;
-  }
-  /* Ask whether Smart Hub is up, rather than whether the launched app is still
-     alive. "Still alive" failed both ways on this TV: YouTube runs through
-     Cobalt, so 9Ur5IzDKqV.TizenYouTube hands off to com.samsung.tv.cobalt-yt
-     and exits after a few seconds, which read as "the viewer left"; and Netflix
-     keeps running in the background after Home is pressed, which read as "the
-     viewer is still watching" and refused to come back.
-
-     Smart Hub being up is the signal that actually matches the thing we care
-     about - the viewer is looking at Samsung's home screen - in every case:
-     Home from the launcher, Home from inside an app, and an app exiting. */
-  function watchdogTick() {
-    watchTimer = 0;
-    if (!document.hidden || !window.FrameDevice || !FrameDevice.smartHubRunning) return;
-    if (Date.now() < suppressUntil) { scheduleWatchdog(); return; }
-    FrameDevice.smartHubRunning(function (up) {
-      if (up) raiseBack();
-      scheduleWatchdog();
-    });
-  }
-  function scheduleWatchdog() {
-    if (watchTimer || !document.hidden) return;
-    var wait = WATCH_STEPS[Math.min(watchStep, WATCH_STEPS.length - 1)];
-    watchStep++;
-    watchTimer = setTimeout(watchdogTick, wait);
-  }
-  function restartWatchdog() {
-    clearTimeout(watchTimer); watchTimer = 0; watchStep = 0;
-    scheduleWatchdog();
-  }
-  /* Choosing Samsung Home from Settings is deliberate: stand down so the viewer
-     is not fought by their own launcher. */
-  function standDown(ms) { suppressUntil = Date.now() + (ms || 90000); }
-  document.addEventListener('visibilitychange', function () {
-    if (document.hidden) restartWatchdog();
-    else {
-      clearTimeout(watchTimer); watchTimer = 0; watchStep = 0;
-      lastRaise = 0;
-    }
-  });
+     standDown is kept because Settings -> Samsung Home still calls it. */
+  function standDown() {}
 
   /* ---------- Start ---------- */
   cueL.innerHTML = icon('left'); cueR.innerHTML = icon('right');
@@ -2008,5 +1959,4 @@
      on-device: getAppsInfo() is a Tizen call, nothing leaves the TV.
      Deferred so it never delays the first paint. */
   setTimeout(function () { if (window.FrameDevice && FrameDevice.apps) refreshCatalog(); }, 150);
-  scheduleWatchdog();
 })();
