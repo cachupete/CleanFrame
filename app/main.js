@@ -59,13 +59,13 @@
      Any brand absent here keeps the original glass treatment. */
   var BRAND_TINT = {
     netflix: { bg: '#141414', ink: '#e50914' },
-    youtube: { bg: '#ff0000', ink: '#ffffff' },
-    primevideo: { bg: '#00a8e1', ink: '#ffffff' },
+    youtube: { bg: '#0f0f0f', ink: '#ff0000' },
+    primevideo: { bg: '#0f1b2d', ink: '#1fa2e1' },
     disneyplus: { bg: '#0c204a', ink: '#ffffff' },
     appletv: { bg: '#000000', ink: '#ffffff' },
-    hulu: { bg: '#1ce783', ink: '#0b0b0b' },
-    spotify: { bg: '#1db954', ink: '#ffffff' },
-    tubi: { bg: '#7408ff', ink: '#ffffff' }
+    hulu: { bg: '#0b0b0b', ink: '#1ce783' },
+    spotify: { bg: '#0b0b0b', ink: '#1db954' },
+    tubi: { bg: '#170c3a', ink: '#fdaf17' }
   };
   function brandTint(a) { return a && BRAND_TINT[a.brand || a.id] || null; }
   var MSG = {
@@ -160,12 +160,13 @@
       + (maskSupport ? '<span class="mk" style="' + st + ';-webkit-mask-image:url(' + ICONS + id + '.svg);mask-image:url(' + ICONS + id + '.svg)"></span>' : '<img alt="" src="' + ICONS + id + '.svg" style="' + st + '">') + '</span>';
   }
   function appMark(a, w, h, size) {
-    /* Prefer the app's own icon as the TV ships it - that is the authentic
-       artwork, in full colour, and it costs nothing to fetch because the file
-       is already on the device. The bundled monochrome mask is the fallback
-       for apps the TV gives us no icon for. If the icon will not load, the
-       data-native-icon handler hides it and the initials show instead. */
-    if (a.mark && !a.icon && (maskSupport || S.c.bg !== 'light')) return markHtml(a.brand || a.id, w, h, size);
+    /* Bundled vector mask wins for brands we ship art for. Tried preferring the
+       TV's own iconPath instead: it looks right in the All apps grid, where the
+       icons are small, but the files are low resolution and blur badly at dock
+       size, and several would not load at all and fell back to initials. The
+       upstream choice was correct. Native icons stay as the fallback for apps
+       we have no mark for, which is what All apps relies on. */
+    if (a.mark && (maskSupport || S.c.bg !== 'light')) return markHtml(a.brand || a.id, w, h, size);
     var words = a.name.split(/\s+/), letters = words[0].charAt(0) + (words.length > 1 ? words[1].charAt(0) : '');
     return '<span class="mark monogram' + (a.icon ? ' native-icon' : '') + '" style="width:' + w + 'px;height:' + h + 'px;font-size:' + Math.round(size * .65) + 'px"><span>' + esc(letters.toUpperCase()) + '</span>'
       + (a.icon ? '<img alt="" data-native-icon="true" src="' + esc(a.icon) + '">' : '') + '</span>';
@@ -1203,10 +1204,10 @@
     if (it.kind === 'add') return '<span class="add">' + icon('plus') + '</span><span class="label">' + (full ? 'Home is full' : 'Add app') + '</span>';
     a = app(it.id);
     body = S.c.apps === 'text' ? '' : appMark(a, S.c.apps === 'icons' ? 136 : 120, S.c.apps === 'icons' ? 88 : 72, S.c.apps === 'icons' ? 72 : 58);
-    /* Fallback only: used when the app has no original icon of its own. The ink
-       wrapper must enclose the mark, because .mk paints from currentColor. */
+    /* Brand colour behind the glyph: crisp vector mark, authentic palette. The
+       ink wrapper must enclose the mark, because .mk paints from currentColor. */
     tint = brandTint(a);
-    if (tint && !a.icon) {
+    if (tint) {
       body = '<span class="brand-plate" style="background:' + tint.bg + '"></span>'
         + '<span class="brand-ink" style="color:' + tint.ink + '">' + body + '</span>';
     }
