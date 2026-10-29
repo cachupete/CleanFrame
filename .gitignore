@@ -27,3 +27,10 @@ PP*.woff2
 /explorations/
 /docs/research/
 /docs/articles/
+
+# Personal wallpaper art. Curious George is protected character artwork:
+# fine on your own TV, not something to redistribute from a public repo.
+# The catalogue entries that reference these files are deliberately left
+# uncommitted too, so a clean clone still passes `npm run check`.
+/app/assets/wallpapers/curious*.jpg
+/app/assets/materials/curious-*.jpg
