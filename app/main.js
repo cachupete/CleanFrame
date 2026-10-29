@@ -484,6 +484,11 @@
     if (!a || busy) return;
     if (S.c.home.indexOf(id) >= 0) { c = next(S.c.home.slice(), S.c.recent.slice()); c.lastApp = id; write(c, 'Last app'); }
     S.press = id; S.lastLaunch = a.name;
+    /* Brief stand-down: between this press and the app reaching the foreground,
+       the platform can show its own home for a moment. Without this the
+       watchdog could read that instant as "dumped on Smart Hub" and haul the
+       viewer back out of the app they just asked for. */
+    standDown(8000);
     perform(a.name, function (done) { FrameDevice.launchApp(a.appId, done); });
   }
   function refreshCatalog() {
@@ -955,7 +960,7 @@
     else if (item.axis) { patch[item.axis] = item.value; setLook(patch, { row: item.axis }); }
     else if (item.action === 'background.wallpaper') openWallpaper();
     else if (item.action === 'background.rotation') openAppearance('rotation');
-    else if (item.action === 'samsung.home') perform('Samsung Home', FrameDevice.home);
+    else if (item.action === 'samsung.home') { standDown(); perform('Samsung Home', FrameDevice.home); }
     else if (item.action === 'samsung.settings') perform('TV settings', FrameDevice.settings);
   }
   V.appearance = {
@@ -998,7 +1003,7 @@
       if (k === 'left') t.f.b = Math.max(0, t.f.b - 1);
       else if (k === 'right') t.f.b = Math.min(A.length - 1, t.f.b + 1);
       else if (k === 'back') pop();
-      else if (k === 'ok') { a = A[t.f.b][0]; pop(); if (a === 'samsung') perform('Samsung Home', FrameDevice.home); }
+      else if (k === 'ok') { a = A[t.f.b][0]; pop(); if (a === 'samsung') { standDown(); perform('Samsung Home', FrameDevice.home); } }
     },
     point: function (t, z, i) { if (z === 'act') { t.f.b = i; this.key(t, 'ok'); } }
   };
@@ -1922,6 +1927,65 @@
   QA.activate = function (action) { return activate(action) ? QA.state() : null; };
   QA.actions = function () { var view = isSettingsDetail(top()) ? appearanceEl : sheetEl.hidden ? homeEl : sheetEl; return Array.prototype.filter.call(view.querySelectorAll('[data-action]'), renderedAction).map(function (el) { return el.getAttribute('data-action'); }); };
 
+  /* ---------- Return watchdog ----------
+     The Home button cannot be rebound on this firmware: db/appfw/home_appid is
+     the documented route, vconftool is not allowlisted here, and it was tested
+     on the device. Launching through an application control so the launcher is
+     the caller was tested too; apps exit to the platform regardless.
+
+     So instead of changing where the platform sends the viewer, notice having
+     been sent there and come back. background-support keeps this app alive once
+     backgrounded, so it can watch and raise itself.
+
+     The thing that makes this safe rather than obnoxious: it checks what is
+     actually in front. Smart Hub means the viewer was dumped there, so return.
+     Netflix means they are watching something, so do nothing. Without that
+     check this would drag people out of films. */
+  /* Burst, then back off. The first check fires immediately on being hidden -
+     waiting a fixed poll interval before even looking was most of the delay -
+     then checks stay rapid while a Home press is plausible and slow right down
+     afterwards, so an idle backgrounded launcher is not polling this SoC hard.
+     Steps are in milliseconds; the last value repeats. */
+  var WATCH_STEPS = [0, 120, 120, 180, 250, 350, 500, 800, 1500, 3000];
+  var RAISE_GAP_MS = 2500, watchTimer = 0, watchStep = 0, lastRaise = 0, suppressUntil = 0;
+  function watchdogAllowed() {
+    return document.hidden && Date.now() > suppressUntil
+      && window.FrameDevice && FrameDevice.foregroundIsSamsungHome;
+  }
+  function watchdogTick() {
+    watchTimer = 0;
+    if (!document.hidden) return;
+    if (!watchdogAllowed()) { scheduleWatchdog(); return; }
+    FrameDevice.foregroundIsSamsungHome(function (onSamsungHome) {
+      if (onSamsungHome && document.hidden && Date.now() - lastRaise > RAISE_GAP_MS
+          && Date.now() > suppressUntil) {
+        lastRaise = Date.now();
+        FrameDevice.raiseSelf();
+        /* Raised: restart the burst so a second Home press is answered as
+           quickly as the first. */
+        watchStep = 0;
+      }
+      scheduleWatchdog();
+    });
+  }
+  function scheduleWatchdog() {
+    if (watchTimer || !document.hidden) return;
+    var wait = WATCH_STEPS[Math.min(watchStep, WATCH_STEPS.length - 1)];
+    watchStep++;
+    watchTimer = setTimeout(watchdogTick, wait);
+  }
+  function restartWatchdog() {
+    clearTimeout(watchTimer); watchTimer = 0; watchStep = 0;
+    scheduleWatchdog();
+  }
+  /* Choosing Samsung Home from Settings is deliberate: stand down for a while so
+     the viewer is not fought by their own launcher. */
+  function standDown(ms) { suppressUntil = Date.now() + (ms || 90000); }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) restartWatchdog();
+    else { clearTimeout(watchTimer); watchTimer = 0; watchStep = 0; lastRaise = 0; }
+  });
+
   /* ---------- Start ---------- */
   cueL.innerHTML = icon('left'); cueR.innerHTML = icon('right');
   initialise();
@@ -1934,4 +1998,5 @@
      on-device: getAppsInfo() is a Tizen call, nothing leaves the TV.
      Deferred so it never delays the first paint. */
   setTimeout(function () { if (window.FrameDevice && FrameDevice.apps) refreshCatalog(); }, 150);
+  scheduleWatchdog();
 })();
