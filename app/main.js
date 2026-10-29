@@ -1927,6 +1927,15 @@
   QA.actions = function () { var view = isSettingsDetail(top()) ? appearanceEl : sheetEl.hidden ? homeEl : sheetEl; return Array.prototype.filter.call(view.querySelectorAll('[data-action]'), renderedAction).map(function (el) { return el.getAttribute('data-action'); }); };
 
   /* ---------- Return when taken away ----------
+     MEASURED 2026-10-29: returning from inside another app is not possible on
+     this firmware. A recorder sampled getAppsContext every 2.5s while this app
+     was hidden and the viewer sat on Smart Hub for ~15s. Result: "t+0s base 25
+     apps" and not a single further line - the set of running applications never
+     changed. Smart Hub is already running before Home is pressed and still
+     running after, so moving between this launcher and Samsung's home is
+     invisible to the only API available. There is nothing to detect, which is
+     why guessing at ids failed twice and interrupted playback both times.
+
      Fires only on the transition into hidden, never on a timer. While an app
      is in front this app is already hidden and no further event arrives, so
      this cannot interrupt something you are watching - which is what every

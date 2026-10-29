@@ -109,6 +109,25 @@
       }, function () { if (!finished) { finished = true; clearTimeout(timer); done(true); } });
     } catch (err) { if (!finished) { finished = true; clearTimeout(timer); done(true); } }
   }
+  /* Diagnostic: the full list of running application ids, as the platform
+     reports it. Used to find out which app actually appears when Smart Hub is
+     on screen, instead of guessing at ids - two guesses so far, both wrong,
+     both of which interrupted playback. */
+  function runningIds(done) {
+    if (!api() || !api().getAppsContext) { done(null); return; }
+    var finished = false;
+    var timer = setTimeout(function () { if (!finished) { finished = true; done(null); } }, 1500);
+    try {
+      api().getAppsContext(function (contexts) {
+        if (finished) return;
+        finished = true; clearTimeout(timer);
+        var ids = [], i;
+        for (i = 0; i < contexts.length; i++) ids.push(contexts[i].appId);
+        ids.sort();
+        done(ids);
+      }, function () { if (!finished) { finished = true; clearTimeout(timer); done(null); } });
+    } catch (err) { if (!finished) { finished = true; clearTimeout(timer); done(null); } }
+  }
   function raiseSelf(done) { launchApp(SELF, done || function () {}); }
   function home(done) { launchApp('com.samsung.tv.csfs', done); }
   function settings(done) { launchApp('com.samsung.tv.coba.setting', done); }
@@ -179,5 +198,6 @@
     } catch (err) { finish(failure(err)); }
   }
   window.FrameDevice = { launch: launch, launchApp: launchApp, home: home, settings: settings, apps: apps,
-    isRunning: isRunning, smartHubRunning: smartHubRunning, raiseSelf: raiseSelf };
+    isRunning: isRunning, smartHubRunning: smartHubRunning, raiseSelf: raiseSelf,
+    runningIds: runningIds };
 }());
