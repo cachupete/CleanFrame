@@ -1,16 +1,16 @@
 /* Public Tizen application APIs. No Mac server, network address or credentials. */
 (function () {
   'use strict';
-  /* Launch targets for UN65TU690TFXZA (US, Tizen 5.5).
-     UNVERIFIED: these are Tizen application IDs, a different namespace from the
-     numeric Samsung store IDs. Confirm every one against getAppsInfo() on the TV
-     (npm run tv:apps) and correct it here before trusting the dock. An ID that is
-     wrong fails safely - launch() reports "no launch target" rather than hanging. */
+  /* Launch targets, VERIFIED on the device 2026-10-28 via `sdb shell 0 applist`
+     on UN65TU690TFXZA (US, Tizen 5.5). Note the TV also ships decoys that carry
+     the same display names - com.samsung.tv.aria-dummy, org.tizen.primevideo-dummy
+     and com.samsung.tv.cobalt-yt - which the -dummy and cobalt-yt filters below
+     exclude. Keep those filters if this list is ever regenerated. */
   var IDS = {
     netflix: 'org.tizen.netflix-app', youtube: '9Ur5IzDKqV.TizenYouTube',
     primevideo: 'org.tizen.primevideo', disneyplus: 'MCmYXNxgcu.DisneyPlus',
-    appletv: 'com.samsung.tv.aria-video', hulu: '', tubi: '3KA0pm7a7V.TubiTV',
-    spotify: 'rJeHak5zRg.Spotify'
+    appletv: 'com.samsung.tv.aria-video', hulu: 'LBUAQX1exg.Hulu',
+    tubi: '3KA0pm7a7V.TubiTV', spotify: 'rJeHak5zRg.Spotify'
   };
   var STREAMING = [];
   var CONSUMER_SYSTEM = ['org.tizen.browser'];

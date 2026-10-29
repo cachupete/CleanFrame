@@ -13,17 +13,15 @@
   var KEYS = { 37: 'left', 38: 'up', 39: 'right', 40: 'down', 13: 'ok', 27: 'back', 8: 'back', 10009: 'back', 461: 'back' };
   var FULL = 'Home holds nine apps. Remove one first.', LAST = 'Home needs one app';
 
-  /* The apps actually installed on this TV, confirmed over its HTTP API.
-     appId values are Tizen application IDs and remain UNVERIFIED - see the note
-     in device.js. Hulu has no known Tizen ID yet, so it carries none and fails
-     safely ("no launch target") until getAppsInfo() supplies the real one. */
+  /* The apps installed on this TV. appId values were VERIFIED on the device
+     2026-10-28 with `sdb shell 0 applist`; see the note in device.js. */
   var PRIMARY_APPS = [
     { id: 'netflix', name: 'Netflix', mark: true, appId: 'org.tizen.netflix-app' },
     { id: 'youtube', name: 'YouTube', mark: true, appId: '9Ur5IzDKqV.TizenYouTube' },
     { id: 'disneyplus', name: 'Disney+', mark: true, appId: 'MCmYXNxgcu.DisneyPlus' },
     { id: 'primevideo', name: 'Prime Video', mark: true, appId: 'org.tizen.primevideo' },
     { id: 'appletv', name: 'Apple TV', mark: true, appId: 'com.samsung.tv.aria-video' },
-    { id: 'hulu', name: 'Hulu', mark: true, appId: '' },
+    { id: 'hulu', name: 'Hulu', mark: true, appId: 'LBUAQX1exg.Hulu' },
     { id: 'tubi', name: 'Tubi', mark: true, appId: '3KA0pm7a7V.TubiTV' },
     { id: 'spotify', name: 'Spotify', mark: true, appId: 'rJeHak5zRg.Spotify' }
   ];
