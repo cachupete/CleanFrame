@@ -56,12 +56,31 @@
     'disney+': 'disneyplus', 'disney plus': 'disneyplus', 'apple tv': 'appletv',
     'hulu': 'hulu', 'tubi': 'tubi', 'spotify': 'spotify'
   };
-  function brandOf(known, a) {
-    if (known[a.id]) return known[a.id];
-    var n = String(a.name || '').toLowerCase().replace(/\s+/g, ' ').trim(), key;
-    if (BY_NAME[n]) return BY_NAME[n];
-    for (key in BY_NAME) if (BY_NAME.hasOwnProperty(key) && n.indexOf(key) === 0) return BY_NAME[key];
+  function normName(a) { return String(a.name || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+  /* A bare prefix test would let "Netflix Free Movies" claim the netflix brand,
+     and because a brand makes an app primary - skipping the consumer and
+     service-name filters - main.js would then rebind the real Netflix tile's
+     launch target to it while still showing the name "Netflix". So a prefix only
+     counts when the next character is a separator, and brands are assigned in
+     three ordered passes so a genuine match always beats a looser one. */
+  function prefixBrand(a) {
+    var n = normName(a), key;
+    for (key in BY_NAME) {
+      if (!BY_NAME.hasOwnProperty(key)) continue;
+      if (n.length > key.length && n.indexOf(key) === 0 && ' -:–—'.indexOf(n.charAt(key.length)) >= 0) return BY_NAME[key];
+    }
     return '';
+  }
+  /* One app per brand, decided before anything is built: an exact ID match wins,
+     then an exact name, then a separator-delimited prefix. First claim holds, so
+     a later app can never take over a brand already resolved. */
+  function assignBrands(known, list) {
+    var owner = {}, claim = {}, i, a, b;
+    function take(a, b) { if (b && !owner[b]) { owner[b] = a.id; claim[a.id] = b; } }
+    for (i = 0; i < list.length; i++) { a = list[i]; take(a, known[a.id]); }
+    for (i = 0; i < list.length; i++) { a = list[i]; if (!claim[a.id]) take(a, BY_NAME[normName(a)]); }
+    for (i = 0; i < list.length; i++) { a = list[i]; if (!claim[a.id]) take(a, prefixBrand(a)); }
+    return claim;
   }
   function apps(done) {
     if (!api()) { unavailable(done); return; }
@@ -70,15 +89,24 @@
       api().getAppsInfo(function (list) {
         var known = {}, seen = {}, result = [];
         Object.keys(IDS).forEach(function (brand) { if (IDS[brand]) known[IDS[brand]] = brand; });
+        var claimed = assignBrands(known, list);
         list.forEach(function (a) {
-          var brand = brandOf(known, a);
-          var primary = !!brand, stream = STREAMING.indexOf(a.id) >= 0;
+          var brand = claimed[a.id] || '';
+          /* Only an ID match may bypass the filters below. A name-derived brand
+             still has to look like a consumer app on its own merits; it selects
+             artwork, it does not grant trust. */
+          var primary = !!known[a.id], stream = STREAMING.indexOf(a.id) >= 0;
           var consumer = /^[A-Za-z0-9]{10}\.[A-Za-z0-9_-]+$/.test(a.id) || CONSUMER_SYSTEM.indexOf(a.id) >= 0;
-          if (a.id === SELF || INTERNAL.indexOf(a.id) >= 0 || seen[a.id] || !a.name || (!primary && !stream && (!a.show || !consumer))) return;
+          /* A name-matched app earns its place only by being one the TV itself
+             shows to the viewer, and it still has to clear the service-name
+             filter below. Only an ID match skips those checks. */
+          var allowed = primary || stream || (brand && a.show) || (a.show && consumer);
+          if (a.id === SELF || INTERNAL.indexOf(a.id) >= 0 || seen[a.id] || !a.name || !allowed) return;
           if (!primary && /(?:service|worker|preview|promotion|plugin|launcher|test|sdk|^ep[ -]|factory|daemon)/i.test(a.name + ' ' + a.id)) return;
           if (/-dummy$/.test(a.id) || a.id === 'com.samsung.tv.cobalt-yt') return;
           seen[a.id] = true;
-          result.push({ appId: a.id, name: a.name, brand: brand || EXTRA_BRANDS[a.id] || '', icon: a.iconPath || '', rank: primary ? Object.keys(IDS).indexOf(brand) : (stream ? 20 : 30) });
+          var order = brand ? Object.keys(IDS).indexOf(brand) : -1;
+          result.push({ appId: a.id, name: a.name, brand: brand || EXTRA_BRANDS[a.id] || '', icon: a.iconPath || '', rank: order >= 0 ? order : (stream ? 20 : 30) });
         });
         result.sort(function (a, b) { return a.rank - b.rank || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
         finish(null, result);
