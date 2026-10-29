@@ -508,6 +508,21 @@
       });
       ALPHA.sort(function (a, b) { return app(a).name.toLowerCase().localeCompare(app(b).name.toLowerCase()); });
       catalog.loaded = true; catalog.error = null; catalog.revision++;
+      /* Drop Home tiles for apps the TV no longer has. Uninstalling an app
+         otherwise leaves a tile that looks fine and does nothing when pressed.
+         Guarded: only when discovery actually returned apps, so a failed or
+         empty read can never wipe the dock. One tile is always kept, because
+         an empty Home has no way back. */
+      if (ALPHA.length) {
+        var kept = S.c.home.filter(function (id) { return ALPHA.indexOf(id) >= 0; });
+        if (kept.length && kept.length !== S.c.home.length) {
+          var dropped = S.c.home.length - kept.length;
+          S.c.home = kept;
+          if (ALPHA.indexOf(S.c.lastApp) < 0) S.c.lastApp = kept[0];
+          if (kept.indexOf(S.sel) < 0) S.sel = kept[0];
+          write(S.c, dropped === 1 ? 'Removed an uninstalled app' : 'Removed uninstalled apps');
+        }
+      }
       if (top().id === 'apps' && oldFocus && ALPHA.indexOf(oldFocus) >= 0) top().f.i = ALPHA.indexOf(oldFocus);
       norm(); render();
     });
