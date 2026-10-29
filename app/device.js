@@ -33,8 +33,23 @@
   function launchApp(id, done) {
     if (!api()) { unavailable(done); return; }
     var finish = bounded(done);
-    try { api().launch(id, function () { finish(null); }, function (err) { finish(failure(err)); }); }
-    catch (err) { finish(failure(err)); }
+    function plainLaunch() {
+      try { api().launch(id, function () { finish(null); }, function (err) { finish(failure(err)); }); }
+      catch (err) { finish(failure(err)); }
+    }
+    /* Launch through an application control with a reply listener rather than a
+       bare launch(). That registers this app as the caller, which is what lets
+       Tizen hand control back here when the launched app finishes, instead of
+       dropping the viewer into Smart Hub. Not every app honours it - plenty exit
+       to the platform regardless - so this is best-effort, and any failure falls
+       straight through to the plain launch that was here before. */
+    try {
+      var control = new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/default');
+      api().launchAppControl(control, id,
+        function () { finish(null); },
+        function () { plainLaunch(); },
+        { onsuccess: function () {}, onfailure: function () {} });
+    } catch (err) { plainLaunch(); }
   }
   function launch(brand, done) {
     if (!IDS[brand]) { done({message: 'This app has no launch target.'}); return; }
