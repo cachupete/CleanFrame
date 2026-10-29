@@ -60,29 +60,31 @@
   /* UNVERIFIED on Tizen 5.5. These IDs come from the Tizen 9 reference TV; the
      2020 platform may name its Smart Hub and Settings apps differently. Confirm
      both against getAppsInfo() before relying on them. */
-  /* Ids the TV uses for its own home experience. Used to tell "the viewer is
-     sitting on Smart Hub" apart from "the viewer is watching Netflix", which is
-     the difference between bouncing back and ruining someone's film. */
-  var SAMSUNG_HOME = ['com.samsung.tv.csfs', 'com.samsung.tv.coba.home',
-    'com.samsung.tv.coba.apps', 'com.samsung.tv.store', 'org.volt.apps'];
-  function foregroundIsSamsungHome(done) {
-    if (!api() || !api().getAppsContext) { done(false); return; }
+  /* getAppsContext lists every RUNNING application, not the foreground one.
+     There is no foreground query in this API, and treating the list as though
+     there were is a trap: Samsung's own home is essentially always running, so
+     "is Smart Hub in the list" answers yes while the viewer is mid-film.
+
+     Used for what it actually reports instead - whether a given app is still
+     alive. When the app the launcher started disappears from this list, that
+     app has exited, which is the moment to come back. */
+  function isRunning(appId, done) {
+    if (!appId || !api() || !api().getAppsContext) { done(true); return; }
     var finished = false;
-    /* Short guard. This runs on a poll loop, so a slow or wedged call must give
-       up quickly rather than hold the next check behind it. Answering "no" on
-       timeout is the safe direction: it declines to raise. */
-    var timer = setTimeout(function () { if (!finished) { finished = true; done(false); } }, 1200);
+    /* On a poll loop, so give up quickly. Answering "still running" on timeout
+       is the safe direction: it declines to raise. */
+    var timer = setTimeout(function () { if (!finished) { finished = true; done(true); } }, 1200);
     try {
       api().getAppsContext(function (contexts) {
         if (finished) return;
         finished = true; clearTimeout(timer);
-        var i, hit = false;
+        var i;
         for (i = 0; i < contexts.length; i++) {
-          if (SAMSUNG_HOME.indexOf(contexts[i].appId) >= 0) { hit = true; break; }
+          if (contexts[i].appId === appId) { done(true); return; }
         }
-        done(hit);
-      }, function () { if (!finished) { finished = true; clearTimeout(timer); done(false); } });
-    } catch (err) { if (!finished) { finished = true; clearTimeout(timer); done(false); } }
+        done(false);
+      }, function () { if (!finished) { finished = true; clearTimeout(timer); done(true); } });
+    } catch (err) { if (!finished) { finished = true; clearTimeout(timer); done(true); } }
   }
   function raiseSelf(done) { launchApp(SELF, done || function () {}); }
   function home(done) { launchApp('com.samsung.tv.csfs', done); }
@@ -154,5 +156,5 @@
     } catch (err) { finish(failure(err)); }
   }
   window.FrameDevice = { launch: launch, launchApp: launchApp, home: home, settings: settings, apps: apps,
-    foregroundIsSamsungHome: foregroundIsSamsungHome, raiseSelf: raiseSelf };
+    isRunning: isRunning, raiseSelf: raiseSelf };
 }());

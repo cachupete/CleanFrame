@@ -484,11 +484,12 @@
     if (!a || busy) return;
     if (S.c.home.indexOf(id) >= 0) { c = next(S.c.home.slice(), S.c.recent.slice()); c.lastApp = id; write(c, 'Last app'); }
     S.press = id; S.lastLaunch = a.name;
-    /* Brief stand-down: between this press and the app reaching the foreground,
-       the platform can show its own home for a moment. Without this the
-       watchdog could read that instant as "dumped on Smart Hub" and haul the
-       viewer back out of the app they just asked for. */
-    standDown(8000);
+    /* Remember what was started: being hidden is then expected, and the
+       watchdog waits for this app to exit rather than treating the hide as the
+       viewer being taken away. The short stand-down covers the gap before it
+       registers as running, when it would otherwise look already-exited. */
+    pendingApp = a.appId;
+    standDown(4000);
     perform(a.name, function (done) { FrameDevice.launchApp(a.appId, done); });
   }
   function refreshCatalog() {
@@ -1929,42 +1930,42 @@
 
   /* ---------- Return watchdog ----------
      The Home button cannot be rebound on this firmware: db/appfw/home_appid is
-     the documented route, vconftool is not allowlisted here, and it was tested
-     on the device. Launching through an application control so the launcher is
-     the caller was tested too; apps exit to the platform regardless.
+     the documented route, vconftool is not allowlisted here, and both that and
+     the application-control caller route were tested on the device. So rather
+     than change where the platform sends the viewer, notice having been sent
+     there and come back. background-support keeps this app resident.
 
-     So instead of changing where the platform sends the viewer, notice having
-     been sent there and come back. background-support keeps this app alive once
-     backgrounded, so it can watch and raise itself.
+     Two cases, told apart by whether this launcher started something:
 
-     The thing that makes this safe rather than obnoxious: it checks what is
-     actually in front. Smart Hub means the viewer was dumped there, so return.
-     Netflix means they are watching something, so do nothing. Without that
-     check this would drag people out of films. */
-  /* Burst, then back off. The first check fires immediately on being hidden -
-     waiting a fixed poll interval before even looking was most of the delay -
-     then checks stay rapid while a Home press is plausible and slow right down
-     afterwards, so an idle backgrounded launcher is not polling this SoC hard.
-     Steps are in milliseconds; the last value repeats. */
-  var WATCH_STEPS = [0, 120, 120, 180, 250, 350, 500, 800, 1500, 3000];
-  var RAISE_GAP_MS = 2500, watchTimer = 0, watchStep = 0, lastRaise = 0, suppressUntil = 0;
-  function watchdogAllowed() {
-    return document.hidden && Date.now() > suppressUntil
-      && window.FrameDevice && FrameDevice.foregroundIsSamsungHome;
+       nothing launched  -> being hidden means the viewer was taken away, by
+                            Home or Return. Come straight back, no API call,
+                            which is what makes that path fast.
+       app launched      -> being hidden is expected. Say nothing until that
+                            app exits, which is when it leaves the running
+                            list, and only then come back.
+
+     An earlier version asked whether Samsung's home was in getAppsContext.
+     That list is every running app, not the foreground one, and Samsung's home
+     is essentially always running - so it answered yes mid-film and hauled the
+     viewer out of whatever they were watching. */
+  var WATCH_STEPS = [0, 120, 150, 220, 320, 450, 700, 1100, 1800, 3000];
+  var RAISE_GAP_MS = 2500;
+  var watchTimer = 0, watchStep = 0, lastRaise = 0, suppressUntil = 0, pendingApp = null;
+
+  function raiseBack() {
+    if (!document.hidden || Date.now() - lastRaise < RAISE_GAP_MS) return;
+    lastRaise = Date.now();
+    pendingApp = null;
+    FrameDevice.raiseSelf();
+    watchStep = 0;
   }
   function watchdogTick() {
     watchTimer = 0;
-    if (!document.hidden) return;
-    if (!watchdogAllowed()) { scheduleWatchdog(); return; }
-    FrameDevice.foregroundIsSamsungHome(function (onSamsungHome) {
-      if (onSamsungHome && document.hidden && Date.now() - lastRaise > RAISE_GAP_MS
-          && Date.now() > suppressUntil) {
-        lastRaise = Date.now();
-        FrameDevice.raiseSelf();
-        /* Raised: restart the burst so a second Home press is answered as
-           quickly as the first. */
-        watchStep = 0;
-      }
+    if (!document.hidden || !window.FrameDevice || !FrameDevice.raiseSelf) return;
+    if (Date.now() < suppressUntil) { scheduleWatchdog(); return; }
+    if (!pendingApp) { raiseBack(); scheduleWatchdog(); return; }
+    FrameDevice.isRunning(pendingApp, function (running) {
+      if (!running) raiseBack();
       scheduleWatchdog();
     });
   }
@@ -1978,12 +1979,15 @@
     clearTimeout(watchTimer); watchTimer = 0; watchStep = 0;
     scheduleWatchdog();
   }
-  /* Choosing Samsung Home from Settings is deliberate: stand down for a while so
-     the viewer is not fought by their own launcher. */
+  /* Choosing Samsung Home from Settings is deliberate: stand down so the viewer
+     is not fought by their own launcher. */
   function standDown(ms) { suppressUntil = Date.now() + (ms || 90000); }
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) restartWatchdog();
-    else { clearTimeout(watchTimer); watchTimer = 0; watchStep = 0; lastRaise = 0; }
+    else {
+      clearTimeout(watchTimer); watchTimer = 0; watchStep = 0;
+      lastRaise = 0; pendingApp = null;
+    }
   });
 
   /* ---------- Start ---------- */
