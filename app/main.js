@@ -1926,26 +1926,44 @@
   QA.activate = function (action) { return activate(action) ? QA.state() : null; };
   QA.actions = function () { var view = isSettingsDetail(top()) ? appearanceEl : sheetEl.hidden ? homeEl : sheetEl; return Array.prototype.filter.call(view.querySelectorAll('[data-action]'), renderedAction).map(function (el) { return el.getAttribute('data-action'); }); };
 
-  /* ---------- Auto-return: REMOVED ----------
-     Bringing the launcher back by itself is off. Every way of detecting
-     "the viewer was taken away" rather than "the viewer is watching
-     something" failed on this TV, and each failure interrupted playback:
+  /* ---------- Return when taken away ----------
+     Fires only on the transition into hidden, never on a timer. While an app
+     is in front this app is already hidden and no further event arrives, so
+     this cannot interrupt something you are watching - which is what every
+     previous attempt got wrong:
 
        launched app still running - YouTube hands off to Cobalt and exits
          within seconds, reading as the viewer leaving, mid-video.
        Smart Hub running - com.samsung.tv.csfs is resident at all times, so
          it answered yes permanently.
-       raise on an uninitiated hide - no polling, but still loops: raising
-         makes this app visible, returning to the app hides it again, and
-         that hide was not a launch, so it raises once more.
 
-     The platform offers no way to ask what is in the foreground, and without
-     that there is no sound signal. A TV that interrupts what you are watching
-     is worse than one that does not return to the launcher, so this stays off
-     until there is a signal worth trusting.
+     Both polled, and polling is what let them reach into a running app.
 
-     standDown is kept because Settings -> Samsung Home still calls it. */
-  function standDown() {}
+     Three guards against the one failure left, a raise/hide loop:
+       MIN_VISIBLE_MS - a hide only counts after a real stretch on screen, so
+         a flicker during launch is ignored.
+       RAISE_GAP_MS   - no two raises close together.
+       RAISE_BUDGET   - a hard cap per visible session. Spend it and this
+         stays quiet until the viewer comes back deliberately, so the worst
+         case is a few unwanted returns, never an unusable TV.
+
+     Not covered, honestly: leaving an app afterwards. By then this app is
+     already hidden and no event arrives. */
+  var MIN_VISIBLE_MS = 1500, RAISE_GAP_MS = 3000, RAISE_BUDGET = 3;
+  var shownAt = Date.now(), lastRaise = 0, raisesThisSession = 0, suppressUntil = 0;
+  function standDown(ms) { suppressUntil = Date.now() + (ms || 90000); }
+  document.addEventListener('visibilitychange', function () {
+    var now = Date.now();
+    if (!document.hidden) { shownAt = now; raisesThisSession = 0; lastRaise = 0; return; }
+    if (now < suppressUntil) return;
+    if (now - shownAt < MIN_VISIBLE_MS) return;
+    if (now - lastRaise < RAISE_GAP_MS) return;
+    if (raisesThisSession >= RAISE_BUDGET) return;
+    if (!window.FrameDevice || !FrameDevice.raiseSelf) return;
+    raisesThisSession++;
+    lastRaise = now;
+    FrameDevice.raiseSelf();
+  });
 
   /* ---------- Start ---------- */
   cueL.innerHTML = icon('left'); cueR.innerHTML = icon('right');
