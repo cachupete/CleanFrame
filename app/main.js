@@ -488,6 +488,7 @@
        home for a moment between this press and the app appearing, and that
        instant must not read as the viewer being dumped on Smart Hub. */
     standDown(5000);
+    startExitWatch(a.appId);
     perform(a.name, function (done) { FrameDevice.launchApp(a.appId, done); });
   }
   function refreshCatalog() {
@@ -1926,6 +1927,75 @@
   QA.activate = function (action) { return activate(action) ? QA.state() : null; };
   QA.actions = function () { var view = isSettingsDetail(top()) ? appearanceEl : sheetEl.hidden ? homeEl : sheetEl; return Array.prototype.filter.call(view.querySelectorAll('[data-action]'), renderedAction).map(function (el) { return el.getAttribute('data-action'); }); };
 
+  /* ---------- Return when the app you opened exits ----------
+     MEASURED on this TV, 2026-10-29, by recording the running set while away.
+
+     YouTube, detectable:
+       launched 9Ur5IzDKqV.TizenYouTube
+       t+3s  START com.samsung.tv.cobalt-yt     <- the real app appears
+       t+49s EXIT  com.samsung.tv.cobalt-yt     <- backed out
+     The stub hands off to Cobalt, so watching the id we asked for is useless;
+     watching what actually STARTS afterwards is the signal.
+
+     Netflix, not detectable:
+       launched org.tizen.netflix-app
+       (no START, no EXIT for Netflix, ever)
+     It is permanently resident. Launching does not start it and backing out
+     does not stop it, so there is nothing to observe. No amount of cleverness
+     fixes that; it simply cannot be detected here.
+
+     The same recording showed heavy unrelated churn while YouTube played -
+     DisneyPlusService, tilesservice and Peacock's service all starting and
+     stopping - so "something exited" would misfire badly. Hence: adopt one
+     target, only from the first few seconds after a launch, never a service.
+
+     Polling is confined to a launch we made and stops the moment the target is
+     adopted or the window passes, so it cannot wander into unrelated apps the
+     way the earlier always-on polling did. */
+  var ADOPT_WINDOW_MS = 9000, EXIT_POLL_MS = 2000;
+  var targetApp = null, adoptUntil = 0, exitTimer = 0, launchBaseline = null;
+  function looksLikeService(id) {
+    return /service|worker|daemon|bgservice|preview|updater|agent/i.test(id);
+  }
+  function startExitWatch(appId) {
+    targetApp = null; launchBaseline = null;
+    adoptUntil = Date.now() + ADOPT_WINDOW_MS;
+    if (!window.FrameDevice || !FrameDevice.runningIds) return;
+    FrameDevice.runningIds(function (ids) {
+      launchBaseline = ids || [];
+      clearTimeout(exitTimer);
+      exitTimer = setTimeout(exitWatchTick, 1200);
+    });
+  }
+  function stopExitWatch() { clearTimeout(exitTimer); exitTimer = 0; targetApp = null; launchBaseline = null; }
+  function exitWatchTick() {
+    exitTimer = 0;
+    if (!document.hidden || !window.FrameDevice || !FrameDevice.runningIds) return;
+    FrameDevice.runningIds(function (ids) {
+      if (!ids) { exitTimer = setTimeout(exitWatchTick, EXIT_POLL_MS); return; }
+      if (!targetApp) {
+        /* Adoption: the first non-service app to appear after our launch is
+           the thing the viewer actually opened. Outside the window, give up -
+           a resident app like Netflix never appears, and guessing past this
+           point is what produced the builds that interrupted playback. */
+        if (Date.now() > adoptUntil) { stopExitWatch(); return; }
+        var i;
+        for (i = 0; i < ids.length; i++) {
+          if (launchBaseline.indexOf(ids[i]) < 0 && !looksLikeService(ids[i])) { targetApp = ids[i]; break; }
+        }
+        exitTimer = setTimeout(exitWatchTick, EXIT_POLL_MS);
+        return;
+      }
+      if (ids.indexOf(targetApp) < 0) {
+        /* The app the viewer opened is gone: they backed out. */
+        stopExitWatch();
+        if (document.hidden && window.FrameDevice && FrameDevice.raiseSelf) FrameDevice.raiseSelf();
+        return;
+      }
+      exitTimer = setTimeout(exitWatchTick, EXIT_POLL_MS);
+    });
+  }
+
   /* ---------- Return when taken away ----------
      MEASURED 2026-10-29: returning from inside another app is not possible on
      this firmware. A recorder sampled getAppsContext every 2.5s while this app
@@ -1963,7 +2033,7 @@
   function standDown(ms) { suppressUntil = Date.now() + (ms || 90000); }
   document.addEventListener('visibilitychange', function () {
     var now = Date.now();
-    if (!document.hidden) { shownAt = now; raisesThisSession = 0; lastRaise = 0; return; }
+    if (!document.hidden) { shownAt = now; raisesThisSession = 0; lastRaise = 0; stopExitWatch(); return; }
     if (now < suppressUntil) return;
     if (now - shownAt < MIN_VISIBLE_MS) return;
     if (now - lastRaise < RAISE_GAP_MS) return;
