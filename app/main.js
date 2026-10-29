@@ -160,7 +160,12 @@
       + (maskSupport ? '<span class="mk" style="' + st + ';-webkit-mask-image:url(' + ICONS + id + '.svg);mask-image:url(' + ICONS + id + '.svg)"></span>' : '<img alt="" src="' + ICONS + id + '.svg" style="' + st + '">') + '</span>';
   }
   function appMark(a, w, h, size) {
-    if (a.mark && (maskSupport || S.c.bg !== 'light')) return markHtml(a.brand || a.id, w, h, size);
+    /* Prefer the app's own icon as the TV ships it - that is the authentic
+       artwork, in full colour, and it costs nothing to fetch because the file
+       is already on the device. The bundled monochrome mask is the fallback
+       for apps the TV gives us no icon for. If the icon will not load, the
+       data-native-icon handler hides it and the initials show instead. */
+    if (a.mark && !a.icon && (maskSupport || S.c.bg !== 'light')) return markHtml(a.brand || a.id, w, h, size);
     var words = a.name.split(/\s+/), letters = words[0].charAt(0) + (words.length > 1 ? words[1].charAt(0) : '');
     return '<span class="mark monogram' + (a.icon ? ' native-icon' : '') + '" style="width:' + w + 'px;height:' + h + 'px;font-size:' + Math.round(size * .65) + 'px"><span>' + esc(letters.toUpperCase()) + '</span>'
       + (a.icon ? '<img alt="" data-native-icon="true" src="' + esc(a.icon) + '">' : '') + '</span>';
@@ -1904,4 +1909,11 @@
   initialise();
   setLook({}, { transient: true, startup: true });
   norm(); render(); fit(); focusStage(); updateClock(); syncRotation();
+  /* Read the installed apps once at startup so the dock can show each app's
+     own icon straight away, instead of only after a visit to All apps. This
+     also refreshes the real launch IDs from the TV, which is what keeps the
+     dock working when a hardcoded ID in PRIMARY_APPS is wrong. Entirely
+     on-device: getAppsInfo() is a Tizen call, nothing leaves the TV.
+     Deferred so it never delays the first paint. */
+  setTimeout(function () { if (window.FrameDevice && FrameDevice.apps) refreshCatalog(); }, 150);
 })();
